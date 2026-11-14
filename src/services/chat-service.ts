@@ -3,6 +3,7 @@ import { FirestoreMessageAdapter } from '../persistence/firestore-message-adapte
 import { PostgresChatAdapter } from '../persistence/postgres-chat-adapter.js';
 import { HttpError } from '../errors.js';
 import { emitChatMessage } from '../realtime/publisher.js';
+import { CHAT_ERROR_MESSAGES } from '../constants/chat-messages.js';
 
 const chats = new PostgresChatAdapter();
 const messages = new FirestoreMessageAdapter();
@@ -12,7 +13,7 @@ async function requireMember(chatId: string, userId: string): Promise<void> {
 }
 
 export async function createOrGetChat(userAId: string, userBId: string): Promise<string> {
-  if (userAId === userBId) throw new HttpError(400, 'A direct chat requires two different users');
+  if (userAId === userBId) throw new HttpError(400, CHAT_ERROR_MESSAGES.requireTwoDifferentUsers);
   try { return await chats.createOrGetDirectChat(userAId, userBId); }
   catch (error) {
     if (error instanceof Error && error.name === 'UserNotFoundError') throw new HttpError(404, error.message);
