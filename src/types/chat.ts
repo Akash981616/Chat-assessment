@@ -1,5 +1,6 @@
+import type { Message } from '../models/message.js';
+
 export interface ChatRow { id: string; created_at: Date; member_ids: string[] }
-export interface Message { id: string; chatId: string; senderId: string; text: string; createdAt: string }
 
 export interface ChatPersistenceAdapter {
   createOrGetDirectChat(userAId: string, userBId: string): Promise<string>;

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ChatPersistenceAdapter, ChatRow } from './contracts.js';
+import type { ChatPersistenceAdapter, ChatRow } from '../types/chat.js';
 import { db } from '../db.js';
 
 export class PostgresChatAdapter implements ChatPersistenceAdapter {

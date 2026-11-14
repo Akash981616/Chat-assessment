@@ -1,11 +1,13 @@
 import express, { type ErrorRequestHandler } from 'express';
 import { ZodError } from 'zod';
-import { HttpError } from './errors.js';
-import { chatRouter } from './routes/chat-routes.js';
+import { HttpError } from './lib/http-error.js';
+import { authenticate } from './middleware/authenticate.js';
+import { chatRouter } from './controllers/chat.controller.js';
 
 export const app = express();
 app.use(express.json({ limit: '32kb' }));
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.use(authenticate);
 app.use(chatRouter);
 
 const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _next) => {

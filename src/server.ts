@@ -2,7 +2,7 @@ import { app } from './app.js';
 import { config } from './config.js';
 import { db } from './db.js';
 import { createServer } from 'node:http';
-import { createSocketServer } from './realtime/socket-server.js';
+import { createSocketServer } from './lib/socket-server.js';
 
 const server = createServer(app);
 

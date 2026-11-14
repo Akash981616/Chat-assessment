@@ -2,12 +2,12 @@ import type { Server as HttpServer } from 'node:http';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 import { Server } from 'socket.io';
-import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { config } from '../config.js';
-import { PostgresChatAdapter } from '../persistence/postgres-chat-adapter.js';
-import type { Message } from '../persistence/contracts.js';
-import { registerMessagePublisher } from './publisher.js';
+import { PostgresChatAdapter } from '../repositories/postgres-chat.repository.js';
+import type { Message } from '../models/message.js';
+import { getUserIdFromToken } from './auth.js';
+import { MESSAGE_RELAY_CHANNEL, messageRelaySchema } from './redis-relay.js';
 
 const chatIdSchema = z.string().uuid();
 const chats = new PostgresChatAdapter();
@@ -25,29 +25,41 @@ interface SocketData { userId: string }
 export async function createSocketServer(httpServer: HttpServer) {
   const publisher = createClient({ url: config.REDIS_URL });
   const subscriber = publisher.duplicate();
+  const relaySubscriber = publisher.duplicate();
   publisher.on('error', (error) => console.error('Redis publisher error', error));
   subscriber.on('error', (error) => console.error('Redis subscriber error', error));
-  await Promise.all([publisher.connect(), subscriber.connect()]);
+  relaySubscriber.on('error', (error) => console.error('Redis message relay error', error));
+  await Promise.all([publisher.connect(), subscriber.connect(), relaySubscriber.connect()]);
 
+  const allowedOrigins = config.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
   const io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>(httpServer, {
     adapter: createAdapter(publisher, subscriber),
     transports: ['websocket'],
+    allowRequest: (request, callback) => {
+      const origin = request.headers.origin;
+      if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+      else callback('Origin is not allowed', false);
+    },
   });
 
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;
     if (typeof token !== 'string') { next(new Error('Authentication token required')); return; }
     try {
-      const decoded = jwt.verify(token, config.JWT_SECRET);
-      if (typeof decoded === 'string' || typeof decoded.sub !== 'string' || decoded.sub.length === 0) {
-        next(new Error('Token must include a user subject'));
-        return;
-      }
-      socket.data.userId = decoded.sub;
+      socket.data.userId = getUserIdFromToken(token);
       next();
     } catch {
       next(new Error('Invalid authentication token'));
     }
+  });
+
+  await relaySubscriber.subscribe(MESSAGE_RELAY_CHANNEL, (payload) => {
+    let decoded: unknown;
+    try { decoded = JSON.parse(payload) as unknown; }
+    catch { console.error('Discarding malformed chat relay event'); return; }
+    const parsed = messageRelaySchema.safeParse(decoded);
+    if (!parsed.success) { console.error('Discarding malformed chat relay event'); return; }
+    io.local.to(`chat:${parsed.data.chatId}`).emit('chat:message', parsed.data.message);
   });
 
   io.on('connection', (socket) => {
@@ -74,15 +86,11 @@ export async function createSocketServer(httpServer: HttpServer) {
     });
   });
 
-  registerMessagePublisher((chatId, message) => {
-    io.to(`chat:${chatId}`).emit('chat:message', message);
-  });
-
   return {
     io,
     async close(): Promise<void> {
       await new Promise<void>((resolve) => io.close(() => resolve()));
-      await Promise.all([publisher.quit(), subscriber.quit()]);
+      await Promise.all([publisher.quit(), subscriber.quit(), relaySubscriber.quit()]);
     },
   };
 }

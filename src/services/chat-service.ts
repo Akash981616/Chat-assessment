@@ -1,8 +1,8 @@
-import type { ChatRow, Message } from '../persistence/contracts.js';
-import { FirestoreMessageAdapter } from '../persistence/firestore-message-adapter.js';
-import { PostgresChatAdapter } from '../persistence/postgres-chat-adapter.js';
-import { HttpError } from '../errors.js';
-import { emitChatMessage } from '../realtime/publisher.js';
+import type { ChatRow } from '../types/chat.js';
+import type { Message } from '../models/message.js';
+import { FirestoreMessageAdapter } from '../repositories/firestore-message.repository.js';
+import { PostgresChatAdapter } from '../repositories/postgres-chat.repository.js';
+import { HttpError } from '../lib/http-error.js';
 import { CHAT_ERROR_MESSAGES } from '../constants/chat-messages.js';
 
 const chats = new PostgresChatAdapter();
@@ -23,9 +23,7 @@ export async function createOrGetChat(userAId: string, userBId: string): Promise
 
 export async function sendMessage(chatId: string, senderId: string, text: string): Promise<Message> {
   await requireMember(chatId, senderId);
-  const message = await messages.createMessage(chatId, senderId, text);
-  emitChatMessage(chatId, message);
-  return message;
+  return messages.createMessage(chatId, senderId, text);
 }
 
 export async function getMessages(chatId: string, userId: string, limit: number): Promise<Message[]> {

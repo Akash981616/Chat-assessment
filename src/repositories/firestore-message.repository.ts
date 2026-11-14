@@ -1,13 +1,25 @@
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import type { Message, MessagePersistenceAdapter } from './contracts.js';
-import { firestore, lastSeenCollection, messageCollection, receiptCollection } from '../firebase.js';
+import type { MessagePersistenceAdapter } from '../types/chat.js';
+import type { Message } from '../models/message.js';
+import { firestore, lastSeenCollection, messageCollection, outboxCollection, receiptCollection } from '../lib/firebase.js';
 
 export class FirestoreMessageAdapter implements MessagePersistenceAdapter {
   async createMessage(chatId: string, senderId: string, text: string): Promise<Message> {
     const ref = firestore.collection(messageCollection).doc();
     const createdAt = Timestamp.now();
     const message: Message = { id: ref.id, chatId, senderId, text, createdAt: createdAt.toDate().toISOString() };
-    await ref.create({ ...message, createdAt });
+    const batch = firestore.batch();
+    batch.create(ref, { ...message, createdAt });
+    batch.create(firestore.collection(outboxCollection).doc(ref.id), {
+      messageId: ref.id,
+      chatId,
+      status: 'pending',
+      attempts: 0,
+      nextAttemptAt: createdAt,
+      leaseUntil: null,
+      createdAt,
+    });
+    await batch.commit();
     return message;
   }
 
