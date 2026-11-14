@@ -47,7 +47,7 @@ To use cloud Firestore instead, remove `FIRESTORE_EMULATOR_HOST`, set `FIREBASE_
 
 ## Run without Docker
 
-- Node.js 20+
+- Node.js 22+
 - PostgreSQL 13+ with `sql/schema.sql` applied
 - Redis 7+
 - A Firebase project with Firestore enabled, or a running Firestore Emulator

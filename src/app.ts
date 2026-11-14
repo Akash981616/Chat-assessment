@@ -10,7 +10,11 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.use(authenticate);
 app.use(chatRouter);
 
-const errorHandler: ErrorRequestHandler = (error: unknown, _req, res) => {
+const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
+  if (error instanceof SyntaxError && 'status' in error && error.status === 400) {
+    res.status(400).json({ error: 'Invalid JSON body' });
+    return;
+  }
   if (error instanceof ZodError) { res.status(400).json({ error: 'Invalid request', details: error.flatten() }); return; }
   if (error instanceof HttpError) { res.status(error.status).json({ error: error.message }); return; }
   console.error(error);

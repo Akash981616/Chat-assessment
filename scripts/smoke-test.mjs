@@ -48,6 +48,12 @@ try {
   const tokenA = makeToken(testUsers[0]);
   const tokenB = makeToken(testUsers[1]);
   const outsiderToken = makeToken(testUsers[2]);
+  const malformedJson = await fetch(`${apiBase}/chat/create`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' },
+    body: '{invalid-json',
+  });
+  assert.equal(malformedJson.status, 400, 'malformed JSON receives a client error');
   const createResponse = await request('/chat/create', {
     token: tokenA,
     method: 'POST',
