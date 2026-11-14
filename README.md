@@ -33,6 +33,14 @@ docker compose up --build
 
 Compose starts PostgreSQL, Redis, the Firestore Emulator, the HTTP/Socket.IO API, and the message-delivery worker. The API is available at `http://localhost:3000`. PostgreSQL, Redis, and Firestore are kept on the internal Compose network; the API port is bound to localhost. PostgreSQL schema is loaded from `sql/schema.sql` on the first database initialization. Persistent named volumes hold service data; `docker compose down -v` removes that local data.
 
+Run the automated checks against the full container stack with:
+
+```sh
+docker compose --profile checks up --build --abort-on-container-exit --exit-code-from checks
+```
+
+The checks compile TypeScript, verify retry backoff boundaries, then seed smoke-test users and exercise JWT auth, membership checks, message history, Socket.IO delivery, read receipts, last-seen state, chat listing, and outbox completion. Standalone checks are `npm run check:retry`, `npm run test:api` (API and PostgreSQL must be running), and `npm run test:smoke` (API, PostgreSQL, Redis worker, and Firestore Emulator must be running).
+
 The Compose stack uses local-only fallback credentials. Before any shared or production deployment, set strong `POSTGRES_PASSWORD` and `JWT_SECRET` values in `.env`. Do not use the local defaults outside development.
 
 To use cloud Firestore instead, remove `FIRESTORE_EMULATOR_HOST`, set `FIREBASE_PROJECT_ID`, and provide Application Default Credentials or mount a service-account file securely. Never commit Firebase credentials.

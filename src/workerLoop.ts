@@ -2,11 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { FieldValue, Timestamp, type DocumentReference } from 'firebase-admin/firestore';
 import { firestore, messageCollection, outboxCollection } from './lib/firebase.js';
 import type { Message } from './models/message.js';
+import { getDeliveryRetryDelayMs, MAX_DELIVERY_ATTEMPTS, shouldRetryDelivery } from './services/retry-policy.js';
 
-const MAX_ATTEMPTS = 8;
 const LEASE_MS = 30_000;
-const BASE_RETRY_MS = 1_000;
-const MAX_RETRY_MS = 60_000;
 const BATCH_SIZE = 25;
 
 type RelayMessage = (chatId: string, message: Message) => Promise<void>;
@@ -27,7 +25,7 @@ async function claimDelivery(ref: DocumentReference): Promise<ClaimedDelivery | 
     } else return null;
 
     const previousAttempts = (snapshot.get('attempts') as number | undefined) ?? 0;
-    if (previousAttempts >= MAX_ATTEMPTS) {
+    if (previousAttempts >= MAX_DELIVERY_ATTEMPTS) {
       transaction.update(ref, { status: 'failed', failedAt: FieldValue.serverTimestamp(), leaseUntil: null, lastError: 'retry-limit-reached' });
       return null;
     }
@@ -49,13 +47,12 @@ async function finishDelivery(ref: DocumentReference, claim: ClaimedDelivery, er
       transaction.update(ref, { status: 'delivered', deliveredAt: FieldValue.serverTimestamp(), leaseUntil: null, claimToken: FieldValue.delete() });
       return;
     }
-    if (claim.attempt >= MAX_ATTEMPTS) {
+    if (!shouldRetryDelivery(claim.attempt)) {
       transaction.update(ref, { status: 'failed', failedAt: FieldValue.serverTimestamp(), leaseUntil: null, claimToken: FieldValue.delete(), lastError: 'relay-failed' });
       console.error(`Message relay exhausted retries for outbox record ${ref.id}`);
       return;
     }
-    const exponential = Math.min(BASE_RETRY_MS * (2 ** (claim.attempt - 1)), MAX_RETRY_MS);
-    const delay = exponential + Math.floor(Math.random() * 250);
+    const delay = getDeliveryRetryDelayMs(claim.attempt);
     transaction.update(ref, {
       status: 'pending', nextAttemptAt: Timestamp.fromMillis(Date.now() + delay),
       leaseUntil: null, claimToken: FieldValue.delete(), lastError: 'relay-failed',

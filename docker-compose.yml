@@ -82,6 +82,22 @@ services:
       firestore:
         condition: service_healthy
 
+  checks:
+    profiles: ["checks"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: checks
+    command: ["npm", "test"]
+    environment:
+      <<: *app-environment
+      API_BASE_URL: http://app:3000
+    depends_on:
+      app:
+        condition: service_healthy
+      worker:
+        condition: service_started
+
 volumes:
   postgres-data:
   redis-data:

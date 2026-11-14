@@ -19,7 +19,7 @@ interface ClientToServerEvents {
 interface ServerToClientEvents {
   'chat:message': (message: Message) => void;
 }
-interface InterServerEvents {}
+type InterServerEvents = Record<never, never>;
 interface SocketData { userId: string }
 
 export async function createSocketServer(httpServer: HttpServer) {
@@ -82,7 +82,7 @@ export async function createSocketServer(httpServer: HttpServer) {
     socket.on('chat:leave', (payload, acknowledge) => {
       const parsed = z.object({ chatId: chatIdSchema }).safeParse(payload);
       if (!parsed.success) { acknowledge?.({ ok: false, error: 'Invalid chatId' }); return; }
-      void socket.leave(`chat:${parsed.data.chatId}`).then(() => acknowledge?.({ ok: true }));
+      void Promise.resolve(socket.leave(`chat:${parsed.data.chatId}`)).then(() => acknowledge?.({ ok: true }));
     });
   });
 

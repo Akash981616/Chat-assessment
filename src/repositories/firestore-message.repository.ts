@@ -34,19 +34,23 @@ export class FirestoreMessageAdapter implements MessagePersistenceAdapter {
   }
 
   async markMessageRead(chatId: string, messageId: string, userId: string): Promise<boolean> {
-    const message = await firestore.collection(messageCollection).doc(messageId).get();
-    if (!message.exists || message.get('chatId') !== chatId) return false;
-    await firestore.collection(receiptCollection).doc(`${messageId}_${userId}`).set({
-      chatId, messageId, userId, readAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-    return true;
+    const messageRef = firestore.collection(messageCollection).doc(messageId);
+    const receiptRef = firestore.collection(receiptCollection).doc(`${messageId}_${encodeURIComponent(userId)}`);
+    return firestore.runTransaction(async (transaction) => {
+      const [message, receipt] = await Promise.all([transaction.get(messageRef), transaction.get(receiptRef)]);
+      if (!message.exists || message.get('chatId') !== chatId) return false;
+      if (!receipt.exists) {
+        transaction.create(receiptRef, { chatId, messageId, userId, readAt: FieldValue.serverTimestamp() });
+      }
+      return true;
+    });
   }
 
   async updateLastSeen(chatId: string, messageId: string, userId: string): Promise<'updated' | 'missing' | 'backwards'> {
     const messageRef = firestore.collection(messageCollection).doc(messageId);
     const message = await messageRef.get();
     if (!message.exists || message.get('chatId') !== chatId) return 'missing';
-    const ref = firestore.collection(lastSeenCollection).doc(`${chatId}_${userId}`);
+    const ref = firestore.collection(lastSeenCollection).doc(`${chatId}_${encodeURIComponent(userId)}`);
     return firestore.runTransaction(async (transaction) => {
       const current = await transaction.get(ref);
       const currentId = current.get('messageId') as string | undefined;
@@ -54,7 +58,10 @@ export class FirestoreMessageAdapter implements MessagePersistenceAdapter {
         const currentMessage = await transaction.get(firestore.collection(messageCollection).doc(currentId));
         const currentAt = currentMessage.get('createdAt') as Timestamp | undefined;
         const nextAt = message.get('createdAt') as Timestamp;
-        if (currentAt && currentAt.toMillis() > nextAt.toMillis()) return 'backwards';
+        if (currentAt) {
+          const timeOrder = currentAt.seconds - nextAt.seconds || currentAt.nanoseconds - nextAt.nanoseconds;
+          if (timeOrder > 0 || (timeOrder === 0 && currentId > messageId)) return 'backwards';
+        }
       }
       transaction.set(ref, { chatId, userId, messageId, updatedAt: FieldValue.serverTimestamp() });
       return 'updated';
